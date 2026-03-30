@@ -1,0 +1,26 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Food Waste Combat Platform – Dependențe Python
+# Python 3.11+
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Framework & Server ─────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0          # server ASGI cu watchfiles pentru dev
+
+# ── Bază de date & ORM ─────────────────────────────────────────────────────────
+sqlalchemy>=2.0.29                  # SQLAlchemy 2.0-style (async)
+asyncpg>=0.29.0                     # driver async PostgreSQL
+geoalchemy2>=0.14.6                 # tipuri PostGIS (Geography, Geometry) pentru SQLAlchemy
+
+# ── Validare ───────────────────────────────────────────────────────────────────
+pydantic>=2.7.0
+pydantic[email]>=2.7.0              # EmailStr (necesită email-validator)
+pydantic-settings>=2.2.1            # citire setări din .env
+
+# ── Autentificare ──────────────────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0    # JWT encode/decode
+passlib[bcrypt]>=1.7.4              # hashing parole bcrypt
+python-multipart>=0.0.9             # OAuth2PasswordRequestForm (form-data)
+
+# ── Utilitar ───────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.1                # încărcarea .env în development

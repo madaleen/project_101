@@ -8,19 +8,20 @@ To create a seamless bridge between surplus food and those in need, ensuring tra
 ## 👥 Roles & Responsibilities
 - **Merchant (Restaurant/Shop)**: Posts items for donation or at a discount.
 - **NGO / Care Center**: Claims donations for those in need.
-- **Individual Client**: Purchases discounted items to save food.
+- **Individual Volunteer**: Claims donations and helps with distribution.
 
 ## 🛠️ Tech Stack
 - **Frontend**: React (Vite) - Mobile responsive.
-- **Backend**: Node.js (Express).
-- **Database**: PostgreSQL + PostGIS.
+- **Backend**: Python 3.12 (FastAPI) - Async engine.
+- **Database**: PostgreSQL + PostGIS (Geospatial search).
 
 ## 📂 Project Structure
 - `/frontend`: React application.
-- `/backend`: Node.js API.
-- `/database`: Schema and migrations.
+- `/backend`: FastAPI application (modular `app` package).
+  - `/backend/app`: Model, Schema, Security, and Routers logic.
+- `/database`: Initial schema drafts.
 
 ## 🌿 Git Strategy
 - `main`: Production-ready code.
 - `develop`: Integration branch.
-- `feature/*`: Specific feature development.
+- `feature/foodsave-backend`: Current backend implementation.

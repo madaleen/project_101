@@ -1,0 +1,11 @@
+{
+  "include": ["backend"],
+  "venvPath": "backend",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "pythonPath": "backend/.venv/bin/python",
+  "extraPaths": ["backend"],
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none",
+  "reportMissingImports": "none"
+}
