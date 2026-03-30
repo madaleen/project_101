@@ -1,100 +1,59 @@
-"""
-Punctul de intrare al aplicației FastAPI.
+from fastapi import FastAPI, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+from uuid import UUID
+from app.crud import create_location, create_product, find_products_nearby, reserve_product
+from app.db import get_db
+from app.auth import get_current_user
 
-Structura modulară:
-  app/
-  ├── core/
-  │   ├── config.py    – setări pydantic-settings
-  │   ├── security.py  – bcrypt + JWT
-  │   └── deps.py      – dependențe FastAPI (get_current_user, require_role)
-  ├── models/
-  │   ├── user.py      – User cu Geography(POINT) PostGIS
-  │   ├── donation.py  – Donation cu status enum
-  │   └── claim.py     – Claim cu UniqueConstraint
-  ├── schemas/
-  │   ├── user.py      – Pydantic v2 UserCreate, UserResponse, Token
-  │   ├── donation.py  – DonationCreate, DonationResponse, NearbyQueryParams
-  │   └── claim.py     – ClaimResponse
-  ├── routers/
-  │   ├── auth.py      – POST /auth/register, POST /auth/login
-  │   ├── donations.py – POST /donations/, GET /donations/nearby (ST_DWithin)
-  │   └── claims.py    – POST /claims/{donation_id} (SELECT FOR UPDATE)
-  └── database.py      – motor async SQLAlchemy 2.0 + get_db dependency
-"""
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+app = FastAPI()
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+class DonationCreate(BaseModel):
+    name: str
+    description: str | None = None
+    product_type: str = Field(..., alias="type")
+    price: float = 0.0
+    quantity: int = 1
+    expiry_time: str
+    address: str
+    lon: float
+    lat: float
+    radius_km: float = 5.0
 
-from app.core.config import settings
-from app.database import Base, engine
-from app.routers import auth, claims, donations
+    model_config = {"populate_by_name": True}
 
 
-# ── Lifespan: creare tabele la pornire (dezvoltare) ───────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """
-    Gestionează evenimentele de startup / shutdown ale aplicației.
+@app.post("/products")
+def create_donation(payload: DonationCreate, db=Depends(get_db), user=Depends(get_current_user)):
+    if user.role != "merchant":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only merchants can post donations")
 
-    La startup: creăm tabelele dacă nu există (util în dev).
-    În producție, folosiți Alembic pentru migrații!
-    """
-    # Importăm modelele pentru ca metadata-ul să fie populat
-    import app.models.claim      # noqa: F401 – înregistrează Claim în Base.metadata
-    import app.models.donation   # noqa: F401 – înregistrează Donation în Base.metadata
-    import app.models.user       # noqa: F401 – înregistrează User în Base.metadata
+    location = create_location(db, user.id, payload.address, payload.lon, payload.lat)
+    if not location:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to create location")
 
-    async with engine.begin() as conn:
-        # ATENȚIE: Nu folosiți create_all în producție! Folosiți Alembic.
-        await conn.run_sync(Base.metadata.create_all)
+    location_id = location["id"]
 
-    yield  # aplicația rulează
+    product = create_product(
+        db,
+        merchant_id=user.id,
+        location_id=location_id,
+        name=payload.name,
+        description=payload.description,
+        product_type=payload.product_type,
+        price=payload.price,
+        quantity=payload.quantity,
+        expiry_time=payload.expiry_time
+    )
+    ngos = find_products_nearby(db, payload.lon, payload.lat, payload.radius_km)
+    return {"product": product, "nearby_ngos": ngos}
 
-    # Shutdown: închidem conexiunile
-    await engine.dispose()
+@app.get("/products/nearby")
+def nearby_products(lon: float, lat: float, radius_km: float = 5.0, db=Depends(get_db)):
+    return find_products_nearby(db, lon, lat, radius_km)
 
-
-# ── Instanța FastAPI ───────────────────────────────────────────────────────────
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.APP_VERSION,
-    description=(
-        "API asincron pentru platforma de combatere a risipei alimentare.\n\n"
-        "## Roluri\n"
-        "- **Store** – Poate crea donații alimentare.\n"
-        "- **NGO** – Poate revendica donații în bulk pentru organizație.\n"
-        "- **Volunteer** – Poate revendica donații individual.\n\n"
-        "## Autentificare\n"
-        "Folosim OAuth2 Password Flow cu JWT Bearer token. "
-        "Click pe **Authorize** și introdu email + parolă."
-    ),
-    lifespan=lifespan,
-)
-
-# ── CORS ───────────────────────────────────────────────────────────────────────
-# Ajustați `allow_origins` în producție pentru a permite doar domeniile voastre!
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ── Routere ────────────────────────────────────────────────────────────────────
-app.include_router(auth.router)
-app.include_router(donations.router)
-app.include_router(claims.router)
-
-
-# ── Health check ───────────────────────────────────────────────────────────────
-@app.get("/", tags=["Health"], summary="Verificare stare API")
-async def root() -> dict:
-    return {
-        "status": "online",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "docs": "/docs",
-    }
+@app.patch("/products/{product_id}/claim")
+def claim_product(product_id: UUID, db=Depends(get_db), user=Depends(get_current_user)):
+    product = reserve_product(db, product_id, user.id)
+    if not product:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Produsul a fost deja revendicat")
+    return product
